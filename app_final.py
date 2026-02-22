@@ -1,4 +1,5 @@
-# app_fixed.py
+
+3# app_fixed.py
 from flask import Flask, render_template, jsonify, request, Response
 from src.helper import download_hugging_face_embeddings
 from langchain_pinecone import PineconeVectorStore
@@ -24,8 +25,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 # Environment keys (make sure these are set in your environment or .env)
-#PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
-#GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 
 if not GROQ_API_KEY:
@@ -51,20 +52,31 @@ try:
     retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
     llm = ChatGroq(
-        temperature=0.4,
+        temperature=0.2,
         max_tokens=500,
         groq_api_key=GROQ_API_KEY,
         model_name="llama-3.3-70b-versatile",
     )
 
+    # --- replace existing prompt / chain creation with this ---
+
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
-            ("human", "{input}"),
+            # include {context} so the combine-docs chain can inject retrieved docs
+            ("human",
+             "Use the following CONTEXT to answer the question.\n\nCONTEXT:\n{context}\n\nQUESTION:\n{input}\n\nAnswer concisely and in the structured medical format requested by system prompt."),
         ]
     )
 
-    question_answer_chain = create_stuff_documents_chain(llm, prompt)
+    # Explicitly tell the chain which variable holds the documents (default is "context")
+    question_answer_chain = create_stuff_documents_chain(
+        llm,
+        prompt,
+        document_variable_name="context"  # ensures the chain knows where to put the retrieved docs
+    )
+
+    # now hook up RAG
     rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
     logger.info("Vector store, retriever, LLm and RAG chain initialized.")
